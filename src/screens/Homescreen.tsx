@@ -1,18 +1,21 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Alert, Platform, Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Alert, Platform, Text, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import {
     requestMultiple,
     requestNotifications,
-    checkNotifications,
     PERMISSIONS,
     RESULTS,
     Permission,
   } from 'react-native-permissions';
 import { SafeAreaView } from 'react-native-safe-area-context';
-  
+
+import NotificationBadge from '../components/NotificationBadge';
+import NotificationList from '../components/NotificationList';
 
 export default function Homescreen() {
+  const [showNotifications, setShowNotifications] = useState(false);
+
   useEffect(() => {
     async function requestPermissions() {
         let permissionsToRequest: Permission[] = [];
@@ -22,7 +25,6 @@ export default function Homescreen() {
             PERMISSIONS.ANDROID.CAMERA,
             PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE,
             PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE,
-            PERMISSIONS.ANDROID.POST_NOTIFICATIONS,
           ];
           const statuses = await requestMultiple(permissionsToRequest);
           handleDeniedPermissions(statuses);
@@ -35,9 +37,9 @@ export default function Homescreen() {
       
           // ✅ Separate call for notification permission
           const { status: notificationStatus } = await requestNotifications(['alert', 'sound', 'badge']);
-          statuses['NOTIFICATIONS'] = notificationStatus;
-      
-          handleDeniedPermissions(statuses);
+          // Add notification status to the statuses object
+          const allStatuses = { ...statuses, NOTIFICATIONS: notificationStatus };
+          handleDeniedPermissions(allStatuses);
         }
       }
       
@@ -64,6 +66,10 @@ export default function Homescreen() {
     Alert.alert('Error', 'Failed to load the App. Please check your internet connection.');
   };
 
+  const toggleNotifications = () => {
+    setShowNotifications(!showNotifications);
+  };
+
   if (hasError) {
     return (
       <View style={styles.errorContainer}>
@@ -73,8 +79,32 @@ export default function Homescreen() {
     );
   }
 
+  if (showNotifications) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={toggleNotifications}>
+            <Text style={styles.backButtonText}>← Back to App</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Alarm Notifications</Text>
+        </View>
+        <NotificationList />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.topBar}>
+        <TouchableOpacity 
+          style={styles.notificationButton} 
+          onPress={toggleNotifications}
+        >
+          <Text style={styles.notificationButtonText}>🔔</Text>
+          <NotificationBadge onPress={toggleNotifications} size="small" />
+        </TouchableOpacity>
+      </View>
+      
       <WebView
         source={{ uri: webViewUrl }}
         style={styles.webview}
@@ -94,6 +124,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationButtonText: {
+    fontSize: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 16,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
   },
   webview: {
     flex: 1,

@@ -13,6 +13,7 @@ import Splashscreen from './src/screens/Splashscreen';
 import Homescreen from './src/screens/Homescreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import { NotificationProvider } from './src/services/NotificationContext';
 
 const Stack = createStackNavigator();
 
@@ -28,13 +29,15 @@ function SplashscreenWithTimeout({ navigation }: any) {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Splash" component={SplashscreenWithTimeout} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="Home" component={Homescreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <NotificationProvider>
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Splash" component={SplashscreenWithTimeout} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="Home" component={Homescreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </NotificationProvider>
   );
 }
