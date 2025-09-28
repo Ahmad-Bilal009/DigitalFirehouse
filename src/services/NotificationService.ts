@@ -1,6 +1,8 @@
-const messaging = require('@react-native-firebase/messaging').default;
+import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import PushNotification from 'react-native-push-notification';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import api from '../api/api';
 const Sound: any = require('react-native-sound');
 
 export interface AlarmNotification {
@@ -119,12 +121,13 @@ class NotificationService {
       // Request Firebase messaging permission
       const authStatus = await messaging().requestPermission();
       const enabled =
-        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        authStatus === FirebaseMessagingTypes.AuthorizationStatus.AUTHORIZED ||
+        authStatus === FirebaseMessagingTypes.AuthorizationStatus.PROVISIONAL;
 
       if (enabled) {
         console.log('Firebase messaging authorization status:', authStatus);
         await this.getFCMToken();
+        await this.setupTokenRefreshListener();
       }
 
       return enabled;
@@ -140,12 +143,102 @@ class NotificationService {
       if (fcmToken) {
         console.log('FCM Token:', fcmToken);
         await AsyncStorage.setItem('fcmToken', fcmToken);
+        
+        // Send FCM token to backend
+        const result = await this.sendFCMTokenToBackend(fcmToken);
+        if (result.success) {
+          console.log('FCM token successfully sent to backend:', result.message);
+        } else {
+          console.log('Failed to send FCM token to backend:', result.message);
+        }
+        
         return fcmToken;
       }
     } catch (error) {
       console.log('Error getting FCM token:', error);
     }
     return null;
+  }
+
+  public async getStoredFCMToken(): Promise<string | null> {
+    try {
+      const fcmToken = await AsyncStorage.getItem('fcmToken');
+      return fcmToken;
+    } catch (error) {
+      console.log('Error getting stored FCM token:', error);
+      return null;
+    }
+  }
+
+  public async sendFCMTokenToBackend(fcmToken: string): Promise<{ success: boolean; message?: string; token?: string }> {
+    try {
+      const deviceName = Platform.OS === 'ios' ? 'iOS Device' : 'Android Device';
+      const deviceOS = Platform.OS === 'ios' ? 'iOS' : 'Android';
+
+      const response = await api.post('/fcm-tokens', {
+        token: fcmToken,
+        device_name: deviceName,
+        device_os: deviceOS,
+      });
+
+      // Handle the backend response
+      const { message, token } = response.data;
+      console.log('FCM token sent to backend successfully:', message);
+      console.log('Stored token:', token);
+      
+      return {
+        success: true,
+        message: message,
+        token: token
+      };
+    } catch (error: any) {
+      console.log('Error sending FCM token to backend:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to send FCM token to backend'
+      };
+    }
+  }
+
+  public async resendFCMTokenToBackend(): Promise<{ success: boolean; message?: string; token?: string }> {
+    try {
+      const storedToken = await this.getStoredFCMToken();
+      if (storedToken) {
+        return await this.sendFCMTokenToBackend(storedToken);
+      } else {
+        console.log('No stored FCM token found, generating new one...');
+        const newToken = await this.getFCMToken();
+        if (newToken) {
+          return await this.sendFCMTokenToBackend(newToken);
+        } else {
+          return {
+            success: false,
+            message: 'Failed to generate FCM token'
+          };
+        }
+      }
+    } catch (error) {
+      console.log('Error resending FCM token to backend:', error);
+      return {
+        success: false,
+        message: 'Error resending FCM token to backend'
+      };
+    }
+  }
+
+  public async setupTokenRefreshListener(): Promise<void> {
+    // Listen for token refresh
+    messaging().onTokenRefresh(async (fcmToken: string) => {
+      console.log('FCM Token refreshed:', fcmToken);
+      await AsyncStorage.setItem('fcmToken', fcmToken);
+      
+      const result = await this.sendFCMTokenToBackend(fcmToken);
+      if (result.success) {
+        console.log('Refreshed FCM token successfully sent to backend:', result.message);
+      } else {
+        console.log('Failed to send refreshed FCM token to backend:', result.message);
+      }
+    });
   }
 
   public async onMessageReceived(): Promise<void> {
@@ -249,7 +342,7 @@ class NotificationService {
     }
     
     // Default to general if no keywords found
-    return this.alarmTypes['general'];
+    return this.alarmTypes.general;
   }
 
   private async playAlarmSound(alarmType: number): Promise<void> {

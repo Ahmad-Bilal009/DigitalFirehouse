@@ -2,12 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>DigitalFirehouse needs access to your camera</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>DigitalFirehouse needs access to your photo library</string>
-	<key>NSUserNotificationUsageDescription</key>
-	<string>DigitalFirehouse uses notifications to alert you</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
@@ -37,8 +31,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>DigitalFirehouse needs access to your camera</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>DigitalFirehouse needs access to your photo library</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>DigitalFirehouse uses notifications to alert you</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIBackgroundModes</key>

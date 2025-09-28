@@ -57,7 +57,7 @@ export default function Homescreen() {
   }, []);
 
   const [hasError, setHasError] = React.useState(false);
-  const webViewUrl = 'https://app.digitalfirehouse.com/alert';
+  const webViewUrl = 'https://app.digitalfirehouse.com/';
 
   const handleError = (syntheticEvent: any) => {
     const { nativeEvent } = syntheticEvent;
@@ -95,15 +95,6 @@ export default function Homescreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <TouchableOpacity 
-          style={styles.notificationButton} 
-          onPress={toggleNotifications}
-        >
-          <Text style={styles.notificationButtonText}>🔔</Text>
-          <NotificationBadge onPress={toggleNotifications} size="small" />
-        </TouchableOpacity>
-      </View>
       
       <WebView
         source={{ uri: webViewUrl }}

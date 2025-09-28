@@ -13,6 +13,8 @@ interface NotificationContextType {
   refreshNotifications: () => Promise<void>;
   stopSound: () => Promise<void>;
   triggerTestNotification: (keyword?: string) => Promise<void>;
+  resendFCMToken: () => Promise<{ success: boolean; message?: string; token?: string }>;
+  getFCMToken: () => Promise<string | null>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -38,7 +40,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   useEffect(() => {
     initializeNotifications();
     setupNotificationListeners();
-  }, []);
+  }, );
 
   const initializeNotifications = async () => {
     try {
@@ -121,6 +123,27 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     }
   };
 
+  const resendFCMToken = async (): Promise<{ success: boolean; message?: string; token?: string }> => {
+    try {
+      return await notificationService.resendFCMTokenToBackend();
+    } catch (error) {
+      console.log('Error resending FCM token:', error);
+      return {
+        success: false,
+        message: 'Error resending FCM token'
+      };
+    }
+  };
+
+  const getFCMToken = async (): Promise<string | null> => {
+    try {
+      return await notificationService.getStoredFCMToken();
+    } catch (error) {
+      console.log('Error getting FCM token:', error);
+      return null;
+    }
+  };
+
   const value: NotificationContextType = {
     notifications,
     unreadCount,
@@ -130,6 +153,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     refreshNotifications,
     stopSound,
     triggerTestNotification,
+    resendFCMToken,
+    getFCMToken,
   };
 
   return (
