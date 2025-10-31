@@ -1,111 +1,217 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Alert, Platform, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet, Alert, Platform, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import {
-    requestMultiple,
-    requestNotifications,
-    PERMISSIONS,
-    RESULTS,
-    Permission,
-  } from 'react-native-permissions';
+  requestMultiple,
+  requestNotifications,
+  PERMISSIONS,
+  RESULTS,
+  Permission,
+} from 'react-native-permissions';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Keychain from 'react-native-keychain';
 
-import NotificationBadge from '../components/NotificationBadge';
-import NotificationList from '../components/NotificationList';
+const BASE_URL = 'https://testing.digitalfirehouse.com';
 
-export default function Homescreen() {
-  const [showNotifications, setShowNotifications] = useState(false);
+const HomeScreen: React.FC = () => {
+  const webViewRef = useRef<WebView>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function requestPermissions() {
-        let permissionsToRequest: Permission[] = [];
+      let permissionsToRequest: Permission[] = [];
       
-        if (Platform.OS === 'android') {
-          permissionsToRequest = [
-            PERMISSIONS.ANDROID.CAMERA,
-            PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE,
-            PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE,
-          ];
-          const statuses = await requestMultiple(permissionsToRequest);
-          handleDeniedPermissions(statuses);
-        } else if (Platform.OS === 'ios') {
-          permissionsToRequest = [
-            PERMISSIONS.IOS.CAMERA,
-            PERMISSIONS.IOS.PHOTO_LIBRARY,
-          ];
-          const statuses = await requestMultiple(permissionsToRequest);
-      
-          // ✅ Separate call for notification permission
-          const { status: notificationStatus } = await requestNotifications(['alert', 'sound', 'badge']);
-          // Add notification status to the statuses object
-          const allStatuses = { ...statuses, NOTIFICATIONS: notificationStatus };
-          handleDeniedPermissions(allStatuses);
-        }
+      if (Platform.OS === 'android') {
+        permissionsToRequest = [
+          PERMISSIONS.ANDROID.CAMERA,
+          PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE,
+          PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE,
+        ];
+        const statuses = await requestMultiple(permissionsToRequest);
+        handleDeniedPermissions(statuses);
+      } else if (Platform.OS === 'ios') {
+        permissionsToRequest = [
+          PERMISSIONS.IOS.CAMERA,
+          PERMISSIONS.IOS.PHOTO_LIBRARY,
+        ];
+        const statuses = await requestMultiple(permissionsToRequest);
+        
+        // Separate call for notification permission
+        const { status: notificationStatus } = await requestNotifications(['alert', 'sound', 'badge']);
+        const allStatuses = { ...statuses, NOTIFICATIONS: notificationStatus };
+        handleDeniedPermissions(allStatuses);
       }
-      
-      function handleDeniedPermissions(statuses: Record<string, string>) {
-        const denied = Object.entries(statuses).filter(([, status]) => status !== RESULTS.GRANTED);
-        if (denied.length > 0) {
-          Alert.alert(
-            'Permissions Required',
-            'Some permissions were denied. The app may not function correctly without camera, storage, and notification permissions.'
-          );
-        }
+    }
+    
+    function handleDeniedPermissions(statuses: Record<string, string>) {
+      const denied = Object.entries(statuses).filter(([, status]) => status !== RESULTS.GRANTED);
+      if (denied.length > 0) {
+        Alert.alert(
+          'Permissions Required',
+          'Some permissions were denied. The app may not function correctly without camera, storage, and notification permissions.'
+        );
       }
-      
+    }
+    
     requestPermissions();
   }, []);
 
-  const [hasError, setHasError] = React.useState(false);
-  const webViewUrl = 'https://app.digitalfirehouse.com/';
+  const handleMessage = async (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      
+      // Handle authentication token from WebView
+      if (data.type === 'auth_token' && data.token) {
+        await Keychain.setGenericPassword('api_token', data.token);
+        console.log('Auth token stored successfully');
+      }
+      
+      // Handle login request from WebView
+      if (data.type === 'login' && data.email && data.password) {
+        await handleLogin(data.email, data.password);
+      }
+    } catch (error) {
+      console.log('Error handling WebView message:', error);
+    }
+  };
+
+  const handleLogin = async (email: string, password: string) => {
+    try {
+      const deviceName = Platform.OS === 'ios' 
+        ? 'iPhone App' 
+        : 'Android App';
+      
+      const response = await fetch(`${BASE_URL}/api/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          device_name: deviceName,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.token) {
+        // Store the auth token
+        await Keychain.setGenericPassword('api_token', result.token);
+        
+        // Send token back to WebView
+        webViewRef.current?.injectJavaScript(`
+          window.postMessage(JSON.stringify({
+            type: 'login_success',
+            token: '${result.token}'
+          }), '*');
+          true;
+        `);
+        
+        console.log('Login successful, token stored');
+      } else {
+        // Send error back to WebView
+        webViewRef.current?.injectJavaScript(`
+          window.postMessage(JSON.stringify({
+            type: 'login_error',
+            message: '${result.message || 'Login failed'}'
+          }), '*');
+          true;
+        `);
+        
+        Alert.alert('Login Failed', result.message || 'Invalid credentials');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert('Error', 'Network error. Please try again.');
+      
+      // Send error back to WebView
+      webViewRef.current?.injectJavaScript(`
+        window.postMessage(JSON.stringify({
+          type: 'login_error',
+          message: 'Network error'
+        }), '*');
+        true;
+      `);
+    }
+  };
+
+  const injectedJavaScript = `
+    (function() {
+      // Intercept fetch requests to add auth token
+      const originalFetch = window.fetch;
+      window.fetch = async function(...args) {
+        const [url, options = {}] = args;
+        
+        // Add Authorization header if token exists
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          options.headers = {
+            ...options.headers,
+            'Authorization': 'Bearer ' + token
+          };
+        }
+        
+        return originalFetch(url, options);
+      };
+
+      // Listen for messages from React Native
+      window.addEventListener('message', function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'login_success' && data.token) {
+            localStorage.setItem('auth_token', data.token);
+            console.log('Token stored in localStorage');
+          }
+        } catch (e) {
+          console.error('Error processing message:', e);
+        }
+      });
+
+      // Expose a function to send login requests to React Native
+      window.ReactNativeWebView = {
+        postMessage: function(data) {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(data);
+          }
+        }
+      };
+    })();
+    true;
+  `;
 
   const handleError = (syntheticEvent: any) => {
     const { nativeEvent } = syntheticEvent;
     console.warn('WebView error: ', nativeEvent);
-    setHasError(true);
-    Alert.alert('Error', 'Failed to load the App. Please check your internet connection.');
+    Alert.alert('Error', 'Failed to load the app. Please check your internet connection.');
   };
-
-  const toggleNotifications = () => {
-    setShowNotifications(!showNotifications);
-  };
-
-  if (hasError) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Failed to load webpage</Text>
-        <Text style={styles.errorSubText}>Please check your internet connection and try again.</Text>
-      </View>
-    );
-  }
-
-  if (showNotifications) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={toggleNotifications}>
-            <Text style={styles.backButtonText}>← Back to App</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Alarm Notifications</Text>
-        </View>
-        <NotificationList />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
-      
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#142A42" />
+        </View>
+      )}
       <WebView
-        source={{ uri: webViewUrl }}
+        ref={webViewRef}
+        source={{ uri: BASE_URL }}
         style={styles.webview}
         onError={handleError}
+        onMessage={handleMessage}
+        onLoadStart={() => setIsLoading(true)}
+        onLoadEnd={() => setIsLoading(false)}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={true}
         scalesPageToFit={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
+        injectedJavaScript={injectedJavaScript}
+        sharedCookiesEnabled={true}
+        thirdPartyCookiesEnabled={true}
       />
     </SafeAreaView>
   );
@@ -116,64 +222,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-  },
-  notificationButtonText: {
-    fontSize: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 16,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
   webview: {
     flex: 1,
   },
-  errorContainer: {
-    flex: 1,
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
     backgroundColor: '#fff',
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FF3B30',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  errorSubText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 20,
+    zIndex: 1,
   },
 });
+
+export default HomeScreen;
