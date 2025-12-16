@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as Keychain from 'react-native-keychain';
 
-const BASE_URL = 'https://app.digitalfirehouse.com';
+const BASE_URL = 'https://testing.digitalfirehouse.com';
 
 const api = axios.create({
     baseURL: `${BASE_URL}/api`,

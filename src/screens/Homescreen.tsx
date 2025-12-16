@@ -19,8 +19,8 @@ import {
 } from 'react-native-permissions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Keychain from 'react-native-keychain';
+import api from '../api/api.js';
 
-const BASE_URL = 'https://testing.digitalfirehouse.com';
 
 const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [login, setLogin] = useState('');
@@ -36,31 +36,24 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      const deviceName = Platform.OS === 'ios' 
-        ? 'iPhone App' 
+      const deviceName = Platform.OS === 'ios'
+        ? 'iPhone App'
         : 'Android App';
-      
-      // Use /api/login for bearer token authentication
-      const response = await fetch(`${BASE_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          login: login.trim(),
-          password,
-          device_name: deviceName,
-        }),
+
+      // Use shared axios client for bearer token authentication
+      const response = await api.post('/login', {
+        login: login.trim(),
+        password,
+        device_name: deviceName,
       });
 
-      const result = await response.json();
+      const result = response.data;
       console.log('Login response:', { status: response.status, data: result });
 
-      if (response.ok && result.token) {
+      if (result.token) {
         // Store the bearer token
         await Keychain.setGenericPassword('api_token', result.token);
-        
+
         // If remember me is checked, also store email
         if (rememberMe) {
           await Keychain.setInternetCredentials(
@@ -69,17 +62,17 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             password
           );
         }
-        
+
         console.log('Login successful, token stored');
         Alert.alert('Success', 'Login successful!');
-        
+
         navigation.replace('Dashboard');
       } else {
         Alert.alert('Login Failed', result?.message || 'Invalid credentials');
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      
+
       // Extract error details
       const errorMessage = error?.message || 'Network error. Please try again.';
       Alert.alert('Error', errorMessage);
@@ -91,7 +84,7 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   useEffect(() => {
     async function requestPermissions() {
       let permissionsToRequest: Permission[] = [];
-      
+
       if (Platform.OS === 'android') {
         permissionsToRequest = [
           PERMISSIONS.ANDROID.CAMERA,
@@ -108,10 +101,10 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         const statuses = await requestMultiple(permissionsToRequest);
         handleDeniedPermissions(statuses);
       }
-      
+
       // Notification permissions are handled by FCMService
     }
-    
+
     function handleDeniedPermissions(statuses: Record<string, string>) {
       const denied = Object.entries(statuses).filter(([, status]) => status !== RESULTS.GRANTED);
       if (denied.length > 0) {
@@ -121,7 +114,7 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         );
       }
     }
-    
+
     requestPermissions();
   }, []);
 

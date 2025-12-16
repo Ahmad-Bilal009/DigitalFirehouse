@@ -1,46 +1,77 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Keychain from 'react-native-keychain';
+import CookieManager from '@react-native-cookies/cookies';
+
+const BASE_URL = 'https://testing.digitalfirehouse.com';
+const COOKIE_NAME = 'digital_firehouse_session';
 
 export default function DashboardScreen() {
-  const [token, setToken] = useState('');
-  const webviewRef = useRef(null);
+  const webviewRef = useRef<WebView>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    async function loadToken() {
-      const creds = await Keychain.getGenericPassword();
-      if (creds) {
-        setToken(creds.password);
+    async function prepareSession() {
+      try {
+        // 1️⃣ Load saved session id (NOT JWT token)
+        const creds = await Keychain.getGenericPassword();
+        if (!creds?.password) {
+          console.log('❌ No session found');
+          return;
+        }
+
+        const sessionId = creds.password;
+
+        // 2️⃣ Clear old cookies (important)
+        await CookieManager.clearAll(true);
+
+        // 3️⃣ Set session cookie
+        await CookieManager.set(BASE_URL, {
+          name: COOKIE_NAME,
+          value: sessionId,
+          domain: 'testing.digitalfirehouse.com',
+          path: '/',
+          secure: true,
+          httpOnly: false, // backend JS must read
+        });
+
+        // 4️⃣ Android cookie persistence
+        if (Platform.OS === 'android') {
+          await CookieManager.flush();
+        }
+
+        console.log('✅ Session cookie set');
+
+        // 5️⃣ Allow WebView to load
+        setReady(true);
+      } catch (e) {
+        console.error('Cookie setup failed', e);
       }
     }
-    loadToken();
+
+    prepareSession();
   }, []);
 
-  if (!token) return null;
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <WebView
       ref={webviewRef}
-      source={{
-        uri: 'https://testing.digitalfirehouse.com',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }}
-      sharedCookiesEnabled={true}
-      thirdPartyCookiesEnabled={true}
-      javaScriptEnabled={true}
-      domStorageEnabled={true}
-      onShouldStartLoadWithRequest={(req) => {
-        if (req.url.includes('testing.digitalfirehouse.com')) return true;
-
-        if (webviewRef.current) {
-          webviewRef.current.stopLoading();
-          webviewRef.current.loadUrl(req.url, {
-            Authorization: `Bearer ${token}`,
-          });
-        }
-        return false;
+      source={{ uri: BASE_URL }}
+      sharedCookiesEnabled
+      thirdPartyCookiesEnabled
+      javaScriptEnabled
+      domStorageEnabled
+      startInLoadingState
+      onLoadEnd={() => {
+        console.log('🌐 WebView loaded');
       }}
     />
   );
