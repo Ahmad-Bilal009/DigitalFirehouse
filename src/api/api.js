@@ -1,8 +1,10 @@
 import axios from 'axios';
 import * as Keychain from 'react-native-keychain';
 
+const BASE_URL = 'https://testing.digitalfirehouse.com';
+
 const api = axios.create({
-    baseURL: 'https://app.digitalfirehouse.com/api',
+    baseURL: `${BASE_URL}/api`,
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -13,8 +15,9 @@ const api = axios.create({
 api.interceptors.request.use(
     async (config) => {
         try {
+            // Get bearer token from Keychain
             const credentials = await Keychain.getGenericPassword();
-            if (credentials) {
+            if (credentials && credentials.password) {
                 config.headers.Authorization = `Bearer ${credentials.password}`;
             }
         } catch (error) {
@@ -35,6 +38,7 @@ api.interceptors.response.use(
         if (error.response && error.response.status === 401) {
             console.warn('Authentication failed (401). Clearing token and redirecting to login.');
             try {
+                // Clear bearer token from Keychain
                 await Keychain.resetGenericPassword();
                 console.log('Authentication token cleared from Keychain.');
             } catch (keychainError) {
